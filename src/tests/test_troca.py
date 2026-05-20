@@ -1,4 +1,3 @@
-
 import unittest
 from unittest.mock import MagicMock
 from app.models.jogador import Jogador
@@ -15,7 +14,7 @@ class TesteSistemaTroca(unittest.TestCase):
         self.jogador2 = Jogador(2, "Misty")
         self.pokemon1 = Pokemon(1, "Pikachu", "disponivel", 10)
         self.pokemon2 = Pokemon(2, "Staryu", "disponivel", 8)
-        self.troca = Troca(1, self.pokemon1, self.pokemon2, self.jogador1, self.jogador2)
+        self.troca = Troca(1, self.jogador1, self.jogador2, self.pokemon1, self.pokemon2)
 
     def test_envio_proposta_com_mock(self):
         mock_notificacao = MagicMock()
@@ -27,7 +26,7 @@ class TesteSistemaTroca(unittest.TestCase):
         real = NotificacaoJogador()
         decorado = NotificacaoDecorator(real)
         resultado = decorado.notificar(self.jogador1, "Mensagem de teste")
-        self.assertIsNone(resultado)  # Apenas printa log
+        self.assertIsNone(resultado)
 
     def test_chain_of_responsibility(self):
         validador = ValidadorNivel(ValidadorStatus())
