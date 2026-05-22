@@ -74,5 +74,3 @@ def atualizar_status_proposta(proposta_id, status, jogadores, pokemons_disponive
 
     with open("propostas_troca.json", "w") as f:
         json.dump(propostas, f, indent=4)
-
-        json.dump(propostas, f, indent=4)

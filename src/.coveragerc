@@ -1,0 +1,9 @@
+[run]
+source = .
+omit =
+    tests/*
+    mqtt_servidor.py
+    mqtt_cliente.py
+
+[report]
+show_missing = True
