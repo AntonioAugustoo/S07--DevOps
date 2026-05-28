@@ -42,7 +42,8 @@ class TesteModels(unittest.TestCase):
     def test_pokemon_subclasses(self):
         shiny = PokemonShiny(3, "Charizard", "disponivel", 15)
         self.assertEqual(shiny.brilhar(), "Charizard está brilhando!")
-        self.assertEqual(shiny.id, 3) and self.assertEqual(shiny.nivel, 15)
+        self.assertEqual(shiny.id, 3)
+        self.assertEqual(shiny.nivel, 15)
 
         mega = PokemonMega(4, "Blaziken", "disponivel", 20)
         self.assertEqual(mega.mega_evoluir(), "Blaziken mega evoluiu!")
