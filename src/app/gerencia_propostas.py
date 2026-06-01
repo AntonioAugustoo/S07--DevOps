@@ -1,16 +1,14 @@
-import json
 from app.models.troca import Troca
+from pymongo import MongoClient
+import os
 
-CAMINHO_PROPOSTAS = "propostas_troca.json"
+MONGO_URL = os.getenv("MONGO_URL", "mongodb://localhost:27017")
+cliente = MongoClient(MONGO_URL)
+db = cliente["pokemon_trade"]
+colecao_propostas = db["propostas"]
 
 def salvar_proposta_json(proposta: Troca):
-    try:
-        with open(CAMINHO_PROPOSTAS, "r") as f:
-            propostas = json.load(f)
-    except FileNotFoundError:
-        propostas = []
-
-    propostas.append({
+    colecao_propostas.insert_one({
         "id": proposta.id,
         "pokemon_oferecido": proposta.pokemon_oferecido.nome,
         "pokemon_desejado": proposta.pokemon_desejado.nome,
@@ -20,26 +18,16 @@ def salvar_proposta_json(proposta: Troca):
         "resposta": "pendente"
     })
 
-    with open(CAMINHO_PROPOSTAS, "w") as f:
-        json.dump(propostas, f, indent=4)
-
 def atualizar_status_proposta(proposta_id, status, jogadores, pokemons_disponiveis, gerenciador):
-    try:
-        with open("propostas_troca.json", "r") as f:
-            propostas = json.load(f)
-    except FileNotFoundError:
-        raise Exception("Arquivo de propostas não encontrado.")
-
-    proposta_encontrada = None
-    for p in propostas:
-        if p["id"] == proposta_id:
-            p["resposta"] = status
-            p["ativa"] = False
-            proposta_encontrada = p
-            break
+    proposta_encontrada = colecao_propostas.find_one({"id": proposta_id})
 
     if not proposta_encontrada:
         raise Exception("Proposta não encontrada.")
+
+    colecao_propostas.update_one(
+        {"id": proposta_id},
+        {"$set": {"resposta": status, "ativa": False}}
+    )
 
     jogador_origem = jogadores.get(int(proposta_encontrada["jogador_origem"]))
     jogador_destino = jogadores.get(int(proposta_encontrada["jogador_destino"]))
@@ -64,13 +52,9 @@ def atualizar_status_proposta(proposta_id, status, jogadores, pokemons_disponive
         status=True
     )
 
-    # Atualizar proposta em memória
     for proposta in jogador_destino.propostas_recebidas:
         if proposta.id == proposta_id:
             proposta.status = True
             break
 
     gerenciador.analisar_proposta(troca)
-
-    with open("propostas_troca.json", "w") as f:
-        json.dump(propostas, f, indent=4)
