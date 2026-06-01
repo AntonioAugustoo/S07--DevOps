@@ -6,14 +6,8 @@ pipeline {
     }
 
     environment {
-        DOCKER_HUB_USER    = "${env.DOCKER_HUB_USER}"
-        DOCKER_HUB_PASS    = "${env.DOCKER_HUB_PASS}"
-        IMAGE_NAME         = "${env.IMAGE_NAME ?: 'pokemon-api'}"
-        NOTIFICATION_EMAIL = "${env.NOTIFICATION_EMAIL}"
-        SMTP_HOST          = "${env.SMTP_HOST}"
-        SMTP_PORT          = "${env.SMTP_PORT ?: '587'}"
-        SMTP_USER          = "${env.SMTP_USER}"
-        SMTP_PASS          = "${env.SMTP_PASS}"
+        IMAGE_NAME = "${env.IMAGE_NAME ?: 'pokemon-api'}"
+        SMTP_PORT  = "${env.SMTP_PORT ?: '587'}"
     }
 
     stages {
@@ -22,6 +16,7 @@ pipeline {
                 docker {
                     image 'python:3.12-slim'
                     reuseNode true
+                    args '-u root'
                 }
             }
             steps {
@@ -44,6 +39,9 @@ pipeline {
         }
 
         stage('SonarQube Analysis') {
+            when {
+                expression { env.SONAR_HOST_URL != null && env.SONAR_HOST_URL != '' }
+            }
             steps {
                 withSonarQubeEnv('SonarQube') {
                     sh 'sonar-scanner'
@@ -52,6 +50,9 @@ pipeline {
         }
 
         stage('Quality Gate') {
+            when {
+                expression { env.SONAR_HOST_URL != null && env.SONAR_HOST_URL != '' }
+            }
             steps {
                 timeout(time: 5, unit: 'MINUTES') {
                     waitForQualityGate abortPipeline: true
@@ -61,21 +62,27 @@ pipeline {
 
         stage('Build / Empacotamento') {
             steps {
-                sh 'tar -czf pokemon-api-build-${BUILD_NUMBER}.tar.gz src/ requirements.txt Dockerfile'
+                sh 'tar -czf pokemon-api-build-${BUILD_NUMBER}.tar.gz src/ requirements.txt Dockerfile.python'
                 archiveArtifacts artifacts: "pokemon-api-build-${BUILD_NUMBER}.tar.gz"
             }
         }
 
         stage('Build Docker Image') {
+            when {
+                expression { env.DOCKER_HUB_USER != null && env.DOCKER_HUB_USER != '' }
+            }
             steps {
-                sh 'docker build -t ${DOCKER_HUB_USER}/${IMAGE_NAME}:${BUILD_NUMBER} .'
+                sh 'docker build -f Dockerfile.python -t ${DOCKER_HUB_USER}/${IMAGE_NAME}:${BUILD_NUMBER} .'
                 sh 'docker tag ${DOCKER_HUB_USER}/${IMAGE_NAME}:${BUILD_NUMBER} ${DOCKER_HUB_USER}/${IMAGE_NAME}:latest'
             }
         }
 
         stage('Push Docker Hub') {
+            when {
+                expression { env.DOCKER_HUB_USER != null && env.DOCKER_HUB_USER != '' }
+            }
             steps {
-                sh 'echo "${DOCKER_HUB_PASS}" | docker login -u "${DOCKER_HUB_USER}" --password-stdin'
+                sh 'echo "$DOCKER_HUB_PASS" | docker login -u "$DOCKER_HUB_USER" --password-stdin'
                 sh 'docker push ${DOCKER_HUB_USER}/${IMAGE_NAME}:${BUILD_NUMBER}'
                 sh 'docker push ${DOCKER_HUB_USER}/${IMAGE_NAME}:latest'
             }
@@ -84,10 +91,10 @@ pipeline {
 
     post {
         success {
-            sh "bash scripts/send_email.sh SUCCESS '${env.BUILD_URL}'"
+            sh '[ -n "$SMTP_HOST" ] && bash scripts/send_email.sh SUCCESS "$BUILD_URL" || echo "SMTP nao configurado, pulando notificacao"'
         }
         failure {
-            sh "bash scripts/send_email.sh FAILURE '${env.BUILD_URL}'"
+            sh '[ -n "$SMTP_HOST" ] && bash scripts/send_email.sh FAILURE "$BUILD_URL" || echo "SMTP nao configurado, pulando notificacao"'
         }
     }
 }

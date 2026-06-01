@@ -1,0 +1,5 @@
+FROM sonarqube:community
+
+# A edição community já inclui análise de Python, Java, JS, etc.
+# Adicione plugins extras aqui se necessário:
+# COPY plugins/ /opt/sonarqube/extensions/plugins/
