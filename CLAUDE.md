@@ -27,9 +27,18 @@ cd src && uvicorn main:app --host 0.0.0.0 --port 8000
 
 ### Running the full stack via Docker Compose
 ```bash
+cp .env.example .env   # preencha DOCKER_HUB_USER, DOCKER_HUB_PASS, e credenciais Postgres
 docker compose up
 ```
-Requires a `.env` file — copy `.env.example` and fill in credentials. API docs at http://localhost:8000/docs, Jenkins at http://localhost:8080, SonarQube at http://localhost:9000.
+- API: http://localhost:8000/docs
+- Jenkins: http://localhost:8080 — login `admin` / `admin` (sem wizard)
+- SonarQube: http://localhost:9000 — login `admin` / `admin`
+
+O serviço `sonarqube-init` roda automaticamente após o SonarQube subir e:
+1. Desativa autenticação forçada (permite sonar-scanner sem token)
+2. Registra o webhook `http://jenkins:8080/sonarqube-webhook/` (necessário para `waitForQualityGate`)
+
+**Para usar o SONAR_TOKEN:** Gere um token em SonarQube → My Account → Security, adicione ao `.env` como `SONAR_TOKEN=`, e reinicie o Jenkins para que o JCasC atualize a credencial.
 
 ### Triggering the Jenkins pipeline manually (via API)
 ```bash
@@ -92,7 +101,7 @@ Coverage excludes `mqtt_servidor.py` and `mqtt_cliente.py` (see `src/.coveragerc
 - **Local checkout**: Jenkins has `JAVA_OPTS=-Dhudson.plugins.git.GitSCM.ALLOW_LOCAL_CHECKOUT=true` to allow `file:///workspace` git URLs during local testing; the `docker-compose.yml` mounts `.:/workspace:ro` into the Jenkins container for this purpose
 
 ### SonarQube webhook
-`waitForQualityGate` requires SonarQube to POST back to Jenkins. Register once after first startup:
+Registrado automaticamente pelo serviço `sonarqube-init` no primeiro `docker compose up`. Se precisar registrar manualmente:
 ```bash
 curl -s -u admin:admin -X POST http://localhost:9000/api/webhooks/create \
   -d "name=Jenkins" -d "url=http://jenkins:8080/sonarqube-webhook/"

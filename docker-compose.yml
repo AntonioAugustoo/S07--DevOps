@@ -42,6 +42,12 @@ services:
       - sonarqube_logs:/opt/sonarqube/logs
     depends_on:
       - db
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9000/api/system/status | grep -q '\"status\":\"UP\"'"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 120s
     restart: unless-stopped
 
   # ── Container 4: PostgreSQL (banco do SonarQube)
@@ -55,6 +61,23 @@ services:
     volumes:
       - postgresql_data:/var/lib/postgresql/data
     restart: unless-stopped
+
+  # ── Container 6: Init do SonarQube (roda uma vez)
+  # registra webhook para Jenkins e desativa autenticação forçada
+  # (permite sonar-scanner rodar sem token na primeira execução)
+  sonarqube-init:
+    image: alpine:3.20
+    container_name: sonarqube-init
+    depends_on:
+      sonarqube:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        apk add --quiet curl
+        curl -sf -u admin:admin -X POST http://sonarqube:9000/api/settings/set -d key=sonar.forceAuthentication -d value=false
+        curl -sf -u admin:admin -X POST http://sonarqube:9000/api/webhooks/create -d name=Jenkins -d url=http://jenkins:8080/sonarqube-webhook/ || echo 'init: webhook ja existente'
+    restart: "no"
 
   # ── Container 5: Jenkins CI/CD
   jenkins:
@@ -72,7 +95,7 @@ services:
     group_add:
       - "0"
     environment:
-      - JAVA_OPTS=-Dhudson.plugins.git.GitSCM.ALLOW_LOCAL_CHECKOUT=true
+      - JAVA_OPTS=-Dhudson.plugins.git.GitSCM.ALLOW_LOCAL_CHECKOUT=true -Djenkins.install.runSetupWizard=false
     env_file:
       - .env
     depends_on:
