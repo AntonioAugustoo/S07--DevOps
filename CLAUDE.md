@@ -11,7 +11,7 @@ A Pokémon card trading system built as a DevOps project. FastAPI handles REST r
 ### Running tests
 ```bash
 # All tests with coverage (run from repo root)
-pytest --cov=src --cov-report=term-missing
+pytest --cov=app --cov-report=term-missing
 
 # Single test file
 pytest src/tests/test_api.py
@@ -19,6 +19,8 @@ pytest src/tests/test_api.py
 # Single test by name
 pytest src/tests/test_api.py::TestCriarProposta::test_sucesso
 ```
+
+`pytest.ini` sets `testpaths = src/tests` and `pythonpath = src`, so coverage must target `app` (not `src`).
 
 ### Running the API locally
 ```bash
@@ -50,12 +52,27 @@ curl -s -u "admin:$PASS" -b "$COOKIE" -H "Jenkins-Crumb: $CRUMB" -X POST http://
 
 ## Architecture
 
+### API endpoints (`src/main.py`)
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/proposta` | Create a trade proposal (validates, persists, publishes MQTT) |
+| `GET` | `/propostas/{jogador_id}` | List proposals received by a player |
+| `POST` | `/proposta/{id_proposta}/aceitar` | Accept a proposal (swaps Pokémon ownership) |
+| `GET` | `/jogador/{jogador_id}` | Get player info with their Pokémon |
+| `GET` | `/topicos_mqtt` | List MQTT topics used |
+
 ### Application state (in-memory + JSON)
 The app has **no database** — state lives in two places:
 - **In-memory dicts** (`jogadores`, `pokemons_disponiveis`) loaded at startup from `src/jogadores_pokemons_10.json`
 - **`src/propostas_troca.json`** — append-only JSON file for trade proposals, reloaded on startup
 
 Both are module-level globals in `src/main.py`. Tests use `monkeypatch` to replace these globals.
+
+Proposals are tracked in two separate in-memory lists:
+- `gerenciador.propostas` — all proposals across all players (used by `GerenciadorDeTroca`)
+- `jogador.propostas_recebidas` — per-player list of incoming proposals (used for `GET /propostas/{id}`)
+
+When `POST /proposta/{id}/aceitar` is called, `atualizar_status_proposta` in `src/app/gerencia_propostas.py` swaps the Pokémon between both players' `.pokemons` lists in memory and rewrites `propostas_troca.json`.
 
 ### Design patterns
 - **Chain of Responsibility** — `ValidadorBase → ValidadorNivel → ValidadorStatus` in `src/app/services/validadores.py`. Validators chain via `super().validar(troca)`.
