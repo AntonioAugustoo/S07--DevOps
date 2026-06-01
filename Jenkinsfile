@@ -68,6 +68,9 @@ pipeline {
         }
 
         stage('Build Docker Image') {
+            when {
+                expression { env.DOCKER_HUB_USER != null && env.DOCKER_HUB_USER != '' }
+            }
             steps {
                 sh 'docker build -t ${DOCKER_HUB_USER}/${IMAGE_NAME}:${BUILD_NUMBER} .'
                 sh 'docker tag ${DOCKER_HUB_USER}/${IMAGE_NAME}:${BUILD_NUMBER} ${DOCKER_HUB_USER}/${IMAGE_NAME}:latest'
@@ -75,6 +78,9 @@ pipeline {
         }
 
         stage('Push Docker Hub') {
+            when {
+                expression { env.DOCKER_HUB_USER != null && env.DOCKER_HUB_USER != '' }
+            }
             steps {
                 sh 'echo "$DOCKER_HUB_PASS" | docker login -u "$DOCKER_HUB_USER" --password-stdin'
                 sh 'docker push ${DOCKER_HUB_USER}/${IMAGE_NAME}:${BUILD_NUMBER}'
