@@ -1,0 +1,23 @@
+FROM jenkins/jenkins:lts
+
+USER root
+
+RUN apt-get update && \
+    apt-get install -y docker.io curl unzip && \
+    apt-get clean
+
+# sonar-scanner — detecta arm64 ou x64 automaticamente
+RUN SONAR_VERSION="6.2.1.4610" && \
+    SONAR_ARCH=$([ "$(uname -m)" = "aarch64" ] && echo "aarch64" || echo "x64") && \
+    curl -sSL "https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-${SONAR_VERSION}-linux-${SONAR_ARCH}.zip" \
+      -o /tmp/sonar-scanner.zip && \
+    unzip /tmp/sonar-scanner.zip -d /opt && \
+    ln -s "/opt/sonar-scanner-${SONAR_VERSION}-linux-${SONAR_ARCH}/bin/sonar-scanner" /usr/local/bin/sonar-scanner && \
+    rm /tmp/sonar-scanner.zip
+
+RUN usermod -aG docker jenkins
+
+COPY jenkins/plugins.txt /usr/share/jenkins/ref/plugins.txt
+RUN jenkins-plugin-cli --plugin-file /usr/share/jenkins/ref/plugins.txt
+
+USER jenkins

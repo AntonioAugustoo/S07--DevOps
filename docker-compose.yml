@@ -1,7 +1,11 @@
 services:
 
-  # ── Container 1: API FastAPI (imagem publicada no Docker Hub)
+  # ── Container 1: API FastAPI
+  # build local para dev; após o pipeline, a imagem vem do Docker Hub
   api:
+    build:
+      context: .
+      dockerfile: Dockerfile.python
     image: ${DOCKER_HUB_USER}/${IMAGE_NAME}:latest
     container_name: pokemon-api
     ports:
