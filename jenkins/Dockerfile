@@ -1,15 +1,25 @@
-# usa a imagem oficial do Jenkins como base
-FROM jenkins/jenkins:lts            
+FROM jenkins/jenkins:lts
 
 USER root
 
-# instalando docker pois o Jenkins precisa do cliente Docker para rodar comandos como docker build e docker push
 RUN apt-get update && \
-    apt-get install -y docker.io && \
+    apt-get install -y docker.io curl unzip && \
     apt-get clean
 
-# adiciona o usuário jenkins ao grupo docker
-RUN usermod -aG docker jenkins       
+RUN curl -sSL https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-6.2.1.4610-linux-x64.zip \
+      -o /tmp/sonar-scanner.zip && \
+    unzip /tmp/sonar-scanner.zip -d /opt && \
+    ln -s /opt/sonar-scanner-6.2.1.4610-linux-x64/bin/sonar-scanner /usr/local/bin/sonar-scanner && \
+    rm /tmp/sonar-scanner.zip
 
-# volta para o usuário jenkins para rodar o Jenkins normalmente(retira do Root)
-USER jenkins                            
+RUN usermod -aG docker jenkins
+
+RUN jenkins-plugin-cli --plugins \
+    "docker-workflow:latest \
+     git:latest \
+     junit:latest \
+     sonar:latest \
+     workflow-aggregator:latest \
+     github:latest"
+
+USER jenkins
