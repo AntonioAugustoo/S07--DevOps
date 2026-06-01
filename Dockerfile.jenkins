@@ -20,4 +20,7 @@ RUN usermod -aG docker jenkins
 COPY jenkins/plugins.txt /usr/share/jenkins/ref/plugins.txt
 RUN jenkins-plugin-cli --plugin-file /usr/share/jenkins/ref/plugins.txt
 
+COPY jenkins/jenkins.yaml /usr/share/jenkins/casc_configs/jenkins.yaml
+ENV CASC_JENKINS_CONFIG=/usr/share/jenkins/casc_configs/jenkins.yaml
+
 USER jenkins

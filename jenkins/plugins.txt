@@ -4,3 +4,4 @@ git:latest
 junit:latest
 sonar:latest
 github:latest
+configuration-as-code:latest

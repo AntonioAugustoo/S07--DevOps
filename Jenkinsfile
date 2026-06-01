@@ -62,7 +62,7 @@ pipeline {
 
         stage('Build / Empacotamento') {
             steps {
-                sh 'tar -czf pokemon-api-build-${BUILD_NUMBER}.tar.gz src/ requirements.txt Dockerfile'
+                sh 'tar -czf pokemon-api-build-${BUILD_NUMBER}.tar.gz src/ requirements.txt Dockerfile.python'
                 archiveArtifacts artifacts: "pokemon-api-build-${BUILD_NUMBER}.tar.gz"
             }
         }
@@ -72,7 +72,7 @@ pipeline {
                 expression { env.DOCKER_HUB_USER != null && env.DOCKER_HUB_USER != '' }
             }
             steps {
-                sh 'docker build -t ${DOCKER_HUB_USER}/${IMAGE_NAME}:${BUILD_NUMBER} .'
+                sh 'docker build -f Dockerfile.python -t ${DOCKER_HUB_USER}/${IMAGE_NAME}:${BUILD_NUMBER} .'
                 sh 'docker tag ${DOCKER_HUB_USER}/${IMAGE_NAME}:${BUILD_NUMBER} ${DOCKER_HUB_USER}/${IMAGE_NAME}:latest'
             }
         }
@@ -91,10 +91,14 @@ pipeline {
 
     post {
         success {
-            sh '[ -n "$SMTP_HOST" ] && bash scripts/send_email.sh SUCCESS "$BUILD_URL" || echo "SMTP nao configurado, pulando notificacao"'
+            node {
+                sh '[ -n "$SMTP_HOST" ] && bash scripts/send_email.sh SUCCESS "$BUILD_URL" || echo "SMTP nao configurado, pulando notificacao"'
+            }
         }
         failure {
-            sh '[ -n "$SMTP_HOST" ] && bash scripts/send_email.sh FAILURE "$BUILD_URL" || echo "SMTP nao configurado, pulando notificacao"'
+            node {
+                sh '[ -n "$SMTP_HOST" ] && bash scripts/send_email.sh FAILURE "$BUILD_URL" || echo "SMTP nao configurado, pulando notificacao"'
+            }
         }
     }
 }
