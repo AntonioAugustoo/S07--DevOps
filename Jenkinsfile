@@ -62,14 +62,14 @@ pipeline {
 
         stage('Build / Empacotamento') {
             steps {
-                sh 'tar -czf pokemon-api-build-${BUILD_NUMBER}.tar.gz src/ requirements.txt Dockerfile.python'
+                sh 'tar -czf pokemon-api-build-${BUILD_NUMBER}.tar.gz src/ requirements.txt Dockerfile'
                 archiveArtifacts artifacts: "pokemon-api-build-${BUILD_NUMBER}.tar.gz"
             }
         }
 
         stage('Build Docker Image') {
             steps {
-                sh 'docker build -f Dockerfile.python -t ${DOCKER_HUB_USER}/${IMAGE_NAME}:${BUILD_NUMBER} .'
+                sh 'docker build -t ${DOCKER_HUB_USER}/${IMAGE_NAME}:${BUILD_NUMBER} .'
                 sh 'docker tag ${DOCKER_HUB_USER}/${IMAGE_NAME}:${BUILD_NUMBER} ${DOCKER_HUB_USER}/${IMAGE_NAME}:latest'
             }
         }
