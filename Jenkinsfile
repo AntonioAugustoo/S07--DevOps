@@ -39,6 +39,9 @@ pipeline {
         }
 
         stage('SonarQube Analysis') {
+            when {
+                expression { env.SONAR_HOST_URL != null && env.SONAR_HOST_URL != '' }
+            }
             steps {
                 withSonarQubeEnv('SonarQube') {
                     sh 'sonar-scanner'
@@ -47,6 +50,9 @@ pipeline {
         }
 
         stage('Quality Gate') {
+            when {
+                expression { env.SONAR_HOST_URL != null && env.SONAR_HOST_URL != '' }
+            }
             steps {
                 timeout(time: 5, unit: 'MINUTES') {
                     waitForQualityGate abortPipeline: true
