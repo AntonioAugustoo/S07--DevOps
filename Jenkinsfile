@@ -84,10 +84,10 @@ pipeline {
 
     post {
         success {
-            sh "bash scripts/send_email.sh SUCCESS '${env.BUILD_URL}'"
+            sh 'bash scripts/send_email.sh SUCCESS "$BUILD_URL"'
         }
         failure {
-            sh "bash scripts/send_email.sh FAILURE '${env.BUILD_URL}'"
+            sh 'bash scripts/send_email.sh FAILURE "$BUILD_URL"'
         }
     }
 }
