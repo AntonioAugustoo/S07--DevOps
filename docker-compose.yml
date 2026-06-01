@@ -1,0 +1,88 @@
+services:
+
+  # ── Container 1: API FastAPI
+  # build local para dev; após o pipeline, a imagem vem do Docker Hub
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.python
+    image: ${DOCKER_HUB_USER}/${IMAGE_NAME}:latest
+    container_name: pokemon-api
+    ports:
+      - "8000:8000"
+    depends_on:
+      - mosquitto
+    restart: unless-stopped
+
+  # ── Container 2: Broker MQTT
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: mosquitto
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf
+    restart: unless-stopped
+
+  # ── Container 3: SonarQube (análise de código)
+  sonarqube:
+    build:
+      context: .
+      dockerfile: Dockerfile.sonarqube
+    container_name: sonarqube
+    ports:
+      - "9000:9000"
+    environment:
+      - SONAR_JDBC_URL=jdbc:postgresql://db:5432/${POSTGRES_DB}
+      - SONAR_JDBC_USERNAME=${POSTGRES_USER}
+      - SONAR_JDBC_PASSWORD=${POSTGRES_PASSWORD}
+    volumes:
+      - sonarqube_data:/opt/sonarqube/data
+      - sonarqube_extensions:/opt/sonarqube/extensions
+      - sonarqube_logs:/opt/sonarqube/logs
+    depends_on:
+      - db
+    restart: unless-stopped
+
+  # ── Container 4: PostgreSQL (banco do SonarQube)
+  db:
+    image: postgres:16-alpine
+    container_name: sonarqube-db
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    volumes:
+      - postgresql_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  # ── Container 5: Jenkins CI/CD
+  jenkins:
+    build:
+      context: .
+      dockerfile: Dockerfile.jenkins
+    container_name: jenkins
+    ports:
+      - "8080:8080"
+      - "50000:50000"
+    volumes:
+      - jenkins_home:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock
+      - .:/workspace:ro
+    group_add:
+      - "0"
+    environment:
+      - JAVA_OPTS=-Dhudson.plugins.git.GitSCM.ALLOW_LOCAL_CHECKOUT=true
+    env_file:
+      - .env
+    depends_on:
+      - sonarqube
+      - mosquitto
+    restart: unless-stopped
+
+volumes:
+  jenkins_home:
+  sonarqube_data:
+  sonarqube_extensions:
+  sonarqube_logs:
+  postgresql_data:
