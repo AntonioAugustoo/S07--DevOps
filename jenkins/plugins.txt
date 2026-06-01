@@ -1,0 +1,6 @@
+workflow-aggregator:latest
+docker-workflow:latest
+git:latest
+junit:latest
+sonar:latest
+github:latest
