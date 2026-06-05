@@ -1,0 +1,11 @@
+# Dockerfile.mongodb
+FROM mongo:7.0
+
+# Define variáveis de ambiente padrão (podem ser sobrescritas pelo compose)
+ENV MONGO_INITDB_DATABASE=pokemon_trades
+
+# Expõe a porta padrão do MongoDB
+EXPOSE 27017
+
+# O entrypoint padrão da imagem do Mongo já lida com a inicialização do banco
+CMD ["mongod"]
