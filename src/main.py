@@ -7,7 +7,8 @@ from app.models.troca import Troca
 from app.notifications.notificacao_jogador import NotificacaoJogador
 from app.services.gerenciador_troca import GerenciadorDeTroca
 from app.utils_carregamento import carregar_dados_do_json
-from app.gerencia_propostas import atualizar_status_proposta, colecao_propostasm  
+from app.gerencia_propostas import atualizar_status_proposta
+from database import colecao_propostas  
 
 CAMINHO_JSON = "jogadores_pokemons_10.json"
 gerenciador = GerenciadorDeTroca(NotificacaoJogador())
