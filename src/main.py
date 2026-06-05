@@ -1,34 +1,38 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import paho.mqtt.publish as publish
+from uuid import uuid4
 from app.services.validadores import ValidadorNivel, ValidadorStatus
 from app.models.troca import Troca
 from app.notifications.notificacao_jogador import NotificacaoJogador
 from app.services.gerenciador_troca import GerenciadorDeTroca
 from app.utils_carregamento import carregar_dados_do_json
-from app.gerencia_propostas import salvar_proposta_json, atualizar_status_proposta, colecao_propostas
+from app.gerencia_propostas import atualizar_status_proposta, salvar_proposta_json
+from database import colecao_propostas
 
 CAMINHO_JSON = "jogadores_pokemons_10.json"
 gerenciador = GerenciadorDeTroca(NotificacaoJogador())
 jogadores, pokemons_disponiveis = carregar_dados_do_json(CAMINHO_JSON)
 
-# Carrega propostas ativas do MongoDB em vez do JSON
-for p in colecao_propostas.find({"ativa": True}):
-    jogador_origem = jogadores.get(int(p["jogador_origem"]))
-    jogador_destino = jogadores.get(int(p["jogador_destino"]))
-    pokemon_oferecido = next((pk for pk in pokemons_disponiveis.values() if pk.nome == p["pokemon_oferecido"]), None)
-    pokemon_desejado = next((pk for pk in pokemons_disponiveis.values() if pk.nome == p["pokemon_desejado"]), None)
-    if jogador_origem and jogador_destino and pokemon_oferecido and pokemon_desejado:
-        troca = Troca(
-            id=p["id"],
-            jogador_origem=jogador_origem,
-            jogador_destino=jogador_destino,
-            pokemon_oferecido=pokemon_oferecido,
-            pokemon_desejado=pokemon_desejado,
-            status=p["ativa"]
-        )
-        gerenciador.propostas.append(troca)
-        jogador_destino.propostas_recebidas.append(troca)
+try:
+    for p in colecao_propostas.find({"ativa": True}):
+        jogador_origem = jogadores.get(int(p["jogador_origem"]))
+        jogador_destino = jogadores.get(int(p["jogador_destino"]))
+        pokemon_oferecido = next((pk for pk in pokemons_disponiveis.values() if pk.nome == p["pokemon_oferecido"]), None)
+        pokemon_desejado = next((pk for pk in pokemons_disponiveis.values() if pk.nome == p["pokemon_desejado"]), None)
+        if jogador_origem and jogador_destino and pokemon_oferecido and pokemon_desejado:
+            troca = Troca(
+                id=p["id"],
+                jogador_origem=jogador_origem,
+                jogador_destino=jogador_destino,
+                pokemon_oferecido=pokemon_oferecido,
+                pokemon_desejado=pokemon_desejado,
+                status=p["ativa"]
+            )
+            gerenciador.propostas.append(troca)
+            jogador_destino.propostas_recebidas.append(troca)
+except Exception:
+    pass
 
 print("Jogadores carregados:", jogadores.keys())
 

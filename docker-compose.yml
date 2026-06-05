@@ -10,8 +10,12 @@ services:
     container_name: pokemon-api
     ports:
       - "8000:8000"
+    environment:
+      - MONGO_URI=mongodb://${MONGO_USER:-devops_user}:${MONGO_PASSWORD:-devops_password}@mongodb:27017/
+      - MONGO_DB=${MONGO_DB:-pokemon_trades}
     depends_on:
       - mosquitto
+      - mongodb 
     restart: unless-stopped
 
   # ── Container 2: Broker MQTT
@@ -103,9 +107,25 @@ services:
       - mosquitto
     restart: unless-stopped
 
+  mongodb:
+    build:
+      context: .
+      dockerfile: Dockerfile.mongodb
+    container_name: mongodb-api
+    ports:
+      - "27017:27017"
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=${MONGO_USER:-devops_user}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_PASSWORD:-devops_password}
+      - MONGO_INITDB_DATABASE=${MONGO_DB:-pokemon_trades}
+    volumes:
+      - mongodb_data:/data/db
+    restart: unless-stopped
+
 volumes:
   jenkins_home:
   sonarqube_data:
   sonarqube_extensions:
   sonarqube_logs:
   postgresql_data:
+  mongodb_data:
