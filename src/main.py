@@ -1,16 +1,19 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import paho.mqtt.publish as publish
+from uuid import uuid4
 from app.services.validadores import ValidadorNivel, ValidadorStatus
 from app.models.troca import Troca
 from app.notifications.notificacao_jogador import NotificacaoJogador
 from app.services.gerenciador_troca import GerenciadorDeTroca
 from app.utils_carregamento import carregar_dados_do_json
-from app.gerencia_propostas import salvar_proposta_json, atualizar_status_proposta, colecao_propostas
+from app.gerencia_propostas import atualizar_status_proposta, colecao_propostasm  
 
 CAMINHO_JSON = "jogadores_pokemons_10.json"
 gerenciador = GerenciadorDeTroca(NotificacaoJogador())
 jogadores, pokemons_disponiveis = carregar_dados_do_json(CAMINHO_JSON)
+
+
 
 # Carrega propostas ativas do MongoDB em vez do JSON
 for p in colecao_propostas.find({"ativa": True}):
