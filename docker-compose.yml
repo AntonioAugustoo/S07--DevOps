@@ -11,10 +11,8 @@ services:
     ports:
       - "8000:8000"
     environment:
-      # Passando a string de conexão do Mongo para o FastAPI
       - MONGO_URI=mongodb://${MONGO_USER:-devops_user}:${MONGO_PASSWORD:-devops_password}@mongodb:27017/
       - MONGO_DB=${MONGO_DB:-pokemon_trades}
-      - name=value
     depends_on:
       - mosquitto
       - mongodb 

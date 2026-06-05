@@ -1,11 +1,6 @@
 from app.models.troca import Troca
-from pymongo import MongoClient
-import os
+from database import colecao_propostas
 
-MONGO_URL = os.getenv("MONGO_URL", "mongodb://localhost:27017")
-cliente = MongoClient(MONGO_URL)
-db = cliente["pokemon_trade"]
-colecao_propostas = db["propostas"]
 
 def salvar_proposta_json(proposta: Troca):
     colecao_propostas.insert_one({
@@ -17,6 +12,7 @@ def salvar_proposta_json(proposta: Troca):
         "ativa": True,
         "resposta": "pendente"
     })
+
 
 def atualizar_status_proposta(proposta_id, status, jogadores, pokemons_disponiveis, gerenciador):
     proposta_encontrada = colecao_propostas.find_one({"id": proposta_id})
@@ -32,8 +28,12 @@ def atualizar_status_proposta(proposta_id, status, jogadores, pokemons_disponive
     jogador_origem = jogadores.get(int(proposta_encontrada["jogador_origem"]))
     jogador_destino = jogadores.get(int(proposta_encontrada["jogador_destino"]))
 
-    pokemon_oferecido = next((pk for pk in jogador_origem.pokemons if pk.nome == proposta_encontrada["pokemon_oferecido"]), None)
-    pokemon_desejado = next((pk for pk in jogador_destino.pokemons if pk.nome == proposta_encontrada["pokemon_desejado"]), None)
+    pokemon_oferecido = next(
+        (pk for pk in jogador_origem.pokemons if pk.nome == proposta_encontrada["pokemon_oferecido"]), None
+    )
+    pokemon_desejado = next(
+        (pk for pk in jogador_destino.pokemons if pk.nome == proposta_encontrada["pokemon_desejado"]), None
+    )
 
     if not all([jogador_origem, jogador_destino, pokemon_oferecido, pokemon_desejado]):
         raise Exception("Dados inválidos para processar troca.")
