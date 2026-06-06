@@ -76,3 +76,4 @@ __pycache__/
 propostas_troca.json
 
 src/propostas_troca.json
+/src/__pycache__/

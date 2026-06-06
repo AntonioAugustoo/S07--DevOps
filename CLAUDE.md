@@ -4,11 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-A Pokémon card trading system built as a DevOps project. FastAPI handles REST routes, MQTT (Mosquitto broker) provides async messaging between players, and state is persisted via JSON files. The CI/CD pipeline runs via Jenkins in Docker.
+A Pokémon card trading system built as a DevOps project. FastAPI handles REST routes, MQTT (Mosquitto broker) provides async messaging between players, and proposals are persisted in MongoDB. The CI/CD pipeline runs via Jenkins in Docker, with SonarQube quality gates before Docker Hub publish.
 
 ## Commands
 
 ### Running tests
+
 ```bash
 # All tests with coverage (run from repo root)
 pytest --cov=app --cov-report=term-missing
@@ -20,109 +21,129 @@ pytest src/tests/test_api.py
 pytest src/tests/test_api.py::TestCriarProposta::test_sucesso
 ```
 
-`pytest.ini` sets `testpaths = src/tests` and `pythonpath = src`, so coverage must target `app` (not `src`).
+`pytest.ini` sets `testpaths = src/tests` and `pythonpath = src`, so coverage must target `app` (not `src`). Tests require no running services — MongoDB and MQTT are fully mocked.
+
+### Running tests inside Docker (same environment as Jenkins)
+
+```bash
+docker run --rm -v "$(pwd)":/app -w /app python:3.12-slim \
+  sh -c "pip install -r requirements.txt -q && cd src && python -m pytest tests/ -v"
+```
 
 ### Running the API locally
+
 ```bash
-cd src && uvicorn main:app --host 0.0.0.0 --port 8000
+cd src && MONGO_URI=mongodb://localhost:27017/ uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 
 ### Running the full stack via Docker Compose
+
 ```bash
-cp .env.example .env   # preencha DOCKER_HUB_USER, DOCKER_HUB_PASS, e credenciais Postgres
+cp .env.example .env   # fill in DOCKER_HUB_USER, DOCKER_HUB_PASS, and Postgres credentials
 docker compose up
 ```
-- API: http://localhost:8000/docs
-- Jenkins: http://localhost:8080 — login `admin` / `admin` (sem wizard)
-- SonarQube: http://localhost:9000 — login `admin` / `admin`
 
-O serviço `sonarqube-init` roda automaticamente após o SonarQube subir e:
-1. Desativa autenticação forçada (permite sonar-scanner sem token)
-2. Registra o webhook `http://jenkins:8080/sonarqube-webhook/` (necessário para `waitForQualityGate`)
+- API: <http://localhost:8000/docs>
+- Jenkins: <http://localhost:8080> — login `admin` / `admin` (no wizard)
+- SonarQube: <http://localhost:9000> — login `admin` / `admin`
 
-**Para usar o SONAR_TOKEN:** Gere um token em SonarQube → My Account → Security, adicione ao `.env` como `SONAR_TOKEN=`, e reinicie o Jenkins para que o JCasC atualize a credencial.
+The `sonarqube-init` service runs once after SonarQube becomes healthy and:
+
+1. Disables forced authentication (allows sonar-scanner without a token)
+2. Registers the webhook `http://jenkins:8080/sonarqube-webhook/` (required for `waitForQualityGate`)
 
 ### Triggering the Jenkins pipeline manually (via API)
+
 ```bash
-PASS=$(docker exec jenkins cat /var/jenkins_home/secrets/initialAdminPassword)
 COOKIE=$(mktemp)
-CRUMB=$(curl -s -u "admin:$PASS" -c "$COOKIE" http://localhost:8080/crumbIssuer/api/json | python3 -c "import sys,json; print(json.load(sys.stdin)['crumb'])")
-curl -s -u "admin:$PASS" -b "$COOKIE" -H "Jenkins-Crumb: $CRUMB" -X POST http://localhost:8080/job/pokemon-api-pipeline/build
+CRUMB=$(curl -s -u "admin:admin" -c "$COOKIE" http://localhost:8080/crumbIssuer/api/json | python3 -c "import sys,json; print(json.load(sys.stdin)['crumb'])")
+curl -s -u "admin:admin" -b "$COOKIE" -H "Jenkins-Crumb: $CRUMB" -X POST http://localhost:8080/job/pokemon-api-pipeline/build
 ```
 
 ## Architecture
 
+### Application state
+
+State lives in two layers:
+
+- **In-memory dicts** (`jogadores`, `pokemons_disponiveis`) — loaded at startup from `src/jogadores_pokemons_10.json` via `carregar_dados_do_json`. These are module-level globals in `src/main.py`; tests replace them with `monkeypatch`.
+- **MongoDB** (`src/database.py`) — `colecao_propostas` in the `pokemon_trades` database. `salvar_proposta_json` inserts new proposals; `atualizar_status_proposta` queries and updates them. On startup, `main.py` replays active proposals from MongoDB into the in-memory state (wrapped in `try/except` so the app boots without MongoDB).
+
+Proposals are tracked in two separate in-memory lists simultaneously:
+
+- `gerenciador.propostas` — used by `GerenciadorDeTroca`
+- `jogador.propostas_recebidas` — used by `GET /propostas/{jogador_id}`
+
 ### API endpoints (`src/main.py`)
+
 | Method | Path | Description |
-|---|---|---|
-| `POST` | `/proposta` | Create a trade proposal (validates, persists, publishes MQTT) |
+| --- | --- | --- |
+| `POST` | `/proposta` | Validate → persist to MongoDB → publish MQTT |
 | `GET` | `/propostas/{jogador_id}` | List proposals received by a player |
-| `POST` | `/proposta/{id_proposta}/aceitar` | Accept a proposal (swaps Pokémon ownership) |
+| `POST` | `/proposta/{id_proposta}/aceitar` | Swap Pokémon ownership in memory + update MongoDB |
 | `GET` | `/jogador/{jogador_id}` | Get player info with their Pokémon |
 | `GET` | `/topicos_mqtt` | List MQTT topics used |
 
-### Application state (in-memory + JSON)
-The app has **no database** — state lives in two places:
-- **In-memory dicts** (`jogadores`, `pokemons_disponiveis`) loaded at startup from `src/jogadores_pokemons_10.json`
-- **`src/propostas_troca.json`** — append-only JSON file for trade proposals, reloaded on startup
-
-Both are module-level globals in `src/main.py`. Tests use `monkeypatch` to replace these globals.
-
-Proposals are tracked in two separate in-memory lists:
-- `gerenciador.propostas` — all proposals across all players (used by `GerenciadorDeTroca`)
-- `jogador.propostas_recebidas` — per-player list of incoming proposals (used for `GET /propostas/{id}`)
-
-When `POST /proposta/{id}/aceitar` is called, `atualizar_status_proposta` in `src/app/gerencia_propostas.py` swaps the Pokémon between both players' `.pokemons` lists in memory and rewrites `propostas_troca.json`.
-
 ### Design patterns
-- **Chain of Responsibility** — `ValidadorBase → ValidadorNivel → ValidadorStatus` in `src/app/services/validadores.py`. Validators chain via `super().validar(troca)`.
+
+- **Chain of Responsibility** — `ValidadorBase → ValidadorNivel → ValidadorStatus` in `src/app/services/validadores.py`. Chain order matters: `ValidadorStatus(ValidadorNivel())` — status is checked first, level second.
 - **Decorator** — `NotificacaoDecorator` wraps `INotificacao` implementations for logging.
 - **Factory** — `NotificacaoFactory` (currently only creates `NotificacaoJogador`).
 
-### MQTT integration
-MQTT publishes fire-and-forget via `paho.mqtt.publish.single` with `hostname="mosquitto"` (Docker service name). All tests mock this with `patch("paho.mqtt.publish.single")` — MQTT is not needed for tests.
-
 ### Trade validation rules
-A trade is valid when:
-1. The offered Pokémon has `status == "disponivel"` (checked by `ValidadorStatus`)
-2. The offered Pokémon's `nivel >= nivel` of the desired Pokémon (checked by `ValidadorNivel`)
 
-### Test layout
-Tests live in `src/tests/`. `conftest.py` sets `os.chdir` to `src/` so relative JSON paths work. `pytest.ini` sets `pythonpath = src`, so imports use `from app.xxx import ...`.
+1. Offered Pokémon must have `status == "disponivel"` (`ValidadorStatus`)
+2. Offered Pokémon's `nivel >= nivel` of desired Pokémon (`ValidadorNivel`)
 
-Coverage excludes `mqtt_servidor.py` and `mqtt_cliente.py` (see `src/.coveragerc`).
+### MQTT
+
+Fire-and-forget via `paho.mqtt.publish.single` with `hostname="mosquitto"`. All tests mock this with `patch("paho.mqtt.publish.single")`.
+
+### Test layout and mocking strategy
+
+- `conftest.py` calls `os.chdir` to `src/` at module level for relative JSON paths.
+- **MongoDB mock**: `conftest.py` patches `database.colecao_propostas` with a `MagicMock` at module level (before test files import `main`). This is necessary because `main.py` runs `colecao_propostas.find()` at import time. Individual test classes that test `gerencia_propostas.py` patch `app.gerencia_propostas.colecao_propostas` directly.
+- Coverage excludes `mqtt_servidor.py` and `mqtt_cliente.py` (see `src/.coveragerc`).
 
 ## CI/CD Pipeline
 
 ### Pipeline stages (Jenkinsfile)
-1. **Testes** — runs `pytest` in a `python:3.12-slim` container with `--cov-fail-under=90`; archives `test-results/`
-2. **SonarQube Analysis** — skipped unless `SONAR_HOST_URL` env var is set; reads coverage from `test-results/coverage.xml`
-3. **Quality Gate** — `waitForQualityGate abortPipeline: true`; SonarQube stages are gated so Docker push never runs if QG fails
-4. **Build / Empacotamento** — tarballs `src/`, `requirements.txt`, `Dockerfile.python` as a versioned artifact
-5. **Build Docker Image** — skipped unless `DOCKER_HUB_USER` is set
-6. **Push Docker Hub** — pushes `:BUILD_NUMBER` and `:latest` tags
-7. **post** — sends email via `scripts/send_email.sh` using `curl smtp://`; silently skips if `SMTP_HOST` is unset
+
+1. **Testes** — `pytest` in `python:3.12-slim` with `--cov-fail-under=90`; archives `test-results/junit.xml` and `coverage.xml`
+2. **SonarQube Analysis** — conditional on `SONAR_HOST_URL` env var; reads `test-results/coverage.xml`
+3. **Quality Gate** — `waitForQualityGate abortPipeline: true`; downstream stages are blocked if QG fails
+4. **Build / Empacotamento** — tarballs `src/`, `requirements.txt`, `Dockerfile.python` as `pokemon-api-build-{N}.tar.gz`
+5. **Build Docker Image** — conditional on `DOCKER_HUB_USER`; tags `:BUILD_NUMBER` and `:latest`
+6. **Push Docker Hub** — conditional on `DOCKER_HUB_USER`
+7. **post** — `scripts/send_email.sh` via `curl smtp://`; silently skips if `SMTP_HOST` is unset
 
 ### Infrastructure containers
+
 | Container | Dockerfile | Role |
-|---|---|---|
+| --- | --- | --- |
 | `pokemon-api` | `Dockerfile.python` | FastAPI app |
 | `mosquitto` | Docker Hub | MQTT broker |
+| `mongodb` | `Dockerfile.mongodb` | MongoDB for proposal persistence |
 | `sonarqube` | `Dockerfile.sonarqube` | Code quality analysis |
-| `sonarqube-db` | Docker Hub (postgres:16) | SonarQube persistence |
+| `sonarqube-db` | Docker Hub (`postgres:16`) | SonarQube persistence |
+| `sonarqube-init` | Docker Hub (`alpine:3.20`) | One-shot: registers webhook + disables forced auth |
 | `jenkins` | `Dockerfile.jenkins` | Jenkins LTS + sonar-scanner CLI + Docker socket |
 
 ### Jenkins configuration
-- **Plugins**: defined in `jenkins/plugins.txt`, installed at image build via `jenkins-plugin-cli`
-- **JCasC**: `jenkins/jenkins.yaml` is copied to `/usr/share/jenkins/casc_configs/` (not `jenkins_home` — that path is a volume and would hide the file). Credentials and SonarQube server are configured via env var substitution (`${SONAR_TOKEN}`, `${DOCKER_HUB_USER}`, `${DOCKER_HUB_PASS}`)
-- **Local checkout**: Jenkins has `JAVA_OPTS=-Dhudson.plugins.git.GitSCM.ALLOW_LOCAL_CHECKOUT=true` to allow `file:///workspace` git URLs during local testing; the `docker-compose.yml` mounts `.:/workspace:ro` into the Jenkins container for this purpose
+
+- **Plugins**: `jenkins/plugins.txt`, installed at image build via `jenkins-plugin-cli`
+- **JCasC**: `jenkins/jenkins.yaml` copied to `/usr/share/jenkins/casc_configs/` (not `jenkins_home` — that path is a volume and would hide the file). Credentials and SonarQube server use env var substitution (`${SONAR_TOKEN}`, `${DOCKER_HUB_USER}`, `${DOCKER_HUB_PASS}`).
+- **Local checkout**: `JAVA_OPTS=-Dhudson.plugins.git.GitSCM.ALLOW_LOCAL_CHECKOUT=true` + `.:/workspace:ro` mount enables `file:///workspace` git URLs. JCasC configures the job to track `*/main` and `*/feature/pipeline-ci-cd`.
 
 ### SonarQube webhook
-Registrado automaticamente pelo serviço `sonarqube-init` no primeiro `docker compose up`. Se precisar registrar manualmente:
+
+Registered automatically by `sonarqube-init`. To register manually:
+
 ```bash
 curl -s -u admin:admin -X POST http://localhost:9000/api/webhooks/create \
   -d "name=Jenkins" -d "url=http://jenkins:8080/sonarqube-webhook/"
 ```
 
 ### Required `.env` variables
-`DOCKER_HUB_USER`, `DOCKER_HUB_PASS`, `IMAGE_NAME`, `SONAR_TOKEN`, `SONAR_HOST_URL`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` — and optionally `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `NOTIFICATION_EMAIL` for email notifications.
+
+`DOCKER_HUB_USER`, `DOCKER_HUB_PASS`, `IMAGE_NAME`, `SONAR_TOKEN`, `SONAR_HOST_URL`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `MONGO_URI`, `MONGO_DB` — and optionally `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `NOTIFICATION_EMAIL` for email notifications.

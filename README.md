@@ -4,7 +4,7 @@
 
 Este projeto demonstra o domínio de práticas modernas de DevOps através da implementação de um sistema distribuído de trocas de cartas Pokémon. O objetivo principal é automatizar todo o ciclo de vida do software — desde o desenvolvimento e execução de testes até o deploy em containers e notificação de status.
 
-O sistema utiliza **FastAPI** para gerenciar as rotas de trocas, **MQTT (Mosquitto)** para comunicação assíncrona entre jogadores e **arquivos JSON** para persistência de propostas. A infraestrutura completa sobe com um único comando via Docker Compose, incluindo Jenkins CI/CD e análise de qualidade via SonarQube.
+O sistema utiliza **FastAPI** para gerenciar as rotas de trocas, **MQTT (Mosquitto)** para comunicação assíncrona entre jogadores e **MongoDB** para persistência de propostas. A infraestrutura completa sobe com um único comando via Docker Compose, incluindo Jenkins CI/CD e análise de qualidade via SonarQube.
 
 ---
 
@@ -22,16 +22,17 @@ docker pull matheusvhs/pokemon-api:latest
 
 ## 🛠️ Stack Tecnológica & Infraestrutura
 
-A infraestrutura utiliza **6 containers** orquestrados via Docker Compose:
+A infraestrutura utiliza **7 containers** orquestrados via Docker Compose:
 
 | # | Container | Origem | Função |
 | --- | --- | --- | --- |
 | 1 | `pokemon-api` | Dockerfile local (`Dockerfile.python`) | Backend FastAPI |
 | 2 | `mosquitto` | Docker Hub (`eclipse-mosquitto:2`) | Broker MQTT para mensageria assíncrona |
-| 3 | `sonarqube` | Dockerfile local (`Dockerfile.sonarqube`) | Análise de qualidade de código |
-| 4 | `sonarqube-db` | Docker Hub (`postgres:16-alpine`) | Banco de dados do SonarQube |
-| 5 | `jenkins` | Dockerfile local (`Dockerfile.jenkins`) | Orquestrador do pipeline CI/CD |
-| 6 | `sonarqube-init` | Docker Hub (`alpine:3.20`) | Configura SonarQube automaticamente na primeira execução |
+| 3 | `mongodb` | Dockerfile local (`Dockerfile.mongodb`) | Persistência de propostas de troca |
+| 4 | `sonarqube` | Dockerfile local (`Dockerfile.sonarqube`) | Análise de qualidade de código |
+| 5 | `sonarqube-db` | Docker Hub (`postgres:16-alpine`) | Banco de dados do SonarQube |
+| 6 | `jenkins` | Dockerfile local (`Dockerfile.jenkins`) | Orquestrador do pipeline CI/CD |
+| 7 | `sonarqube-init` | Docker Hub (`alpine:3.20`) | Configura SonarQube automaticamente na primeira execução |
 
 **Comunicação entre serviços:**
 - `pokemon-api` ↔ `mosquitto` via MQTT (porta 1883)
@@ -175,7 +176,7 @@ As ferramentas de IA utilizadas no projeto foram:
 
 | Ferramenta | Uso principal |
 | --- | --- |
-| **Claude (Anthropic)** | Estruturação do `Dockerfile.jenkins`, `jenkins.yaml` (JCasC), `docker-compose.yml`, debug de pipeline, revisão de testes |
+| **Claude Code (Anthropic)** | Geração do `Jenkinsfile`, `jenkins.yaml` (JCasC), `docker-compose.yml`, `scripts/send_email.sh`, diagnóstico de bugs no MongoDB, debug iterativo do pipeline, completar o README |
 | **GitHub Copilot** | Autocomplete em testes unitários e nas rotas FastAPI |
 
 ### Exemplos reais de prompts
@@ -199,12 +200,33 @@ As ferramentas de IA utilizadas no projeto foram:
 
 *Resultado:* A sugestão do `healthcheck` com `curl -sf http://localhost:9000/api/system/status` foi aceita. O `start_period: 120s` foi ajustado manualmente após observar o tempo real de inicialização do SonarQube.
 
+---
+
+**Prompt 4** — criação do Jenkinsfile do zero a partir dos requisitos:
+> "Crie a pipeline de CI/CD através do Jenkinsfile, crie uma nova branch para isso, leia requisitos-tecnicos.md"
+
+*Resultado:* Claude leu o arquivo de requisitos e gerou o `Jenkinsfile` com 6 stages (Testes, SonarQube, Quality Gate, Build, Docker Image, Push), `sonar-project.properties`, e `scripts/send_email.sh` usando `curl smtp://` com endereço lido de `NOTIFICATION_EMAIL`. O script de e-mail foi aceito integralmente; o Jenkinsfile precisou de 4 correções iterativas até rodar sem erro no Jenkins real (ajuste no `post` block, permissão do pip, nome do Dockerfile e BUILD_URL null).
+
+---
+
+**Prompt 5** — diagnóstico e correção da integração MongoDB:
+> "Teste a integração com o bd"
+
+*Resultado:* Claude executou os testes e identificou 5 bugs independentes: (1) `salvar_proposta_json` era chamada em `main.py` sem ser importada — `NameError` silencioso; (2) `colecao_propostas.find()` rodava no nível de módulo e travava o import quando o MongoDB não estava no ar; (3) `gerencia_propostas.py` abria uma segunda conexão MongoDB com URI e banco diferentes de `database.py`; (4) os testes de `gerencia_propostas` ainda liam/escreviam JSON no disco em vez de mockar o driver; (5) `pymongo` duplicado no `requirements.txt`. Todos os bugs foram corrigidos e os testes passaram de 17/21 para 21/21 com 99.35% de cobertura.
+
+---
+
+**Prompt 6** — garantir funcionamento pós-clone sem configuração manual:
+> "Se alguém clonar o repo e testar o docker compose vai funcionar? Não ficou mais nada pra mudar?"
+
+*Resultado:* Claude identificou que o webhook do Jenkins no SonarQube e a desativação de autenticação forçada precisavam ser feitos manualmente. Propôs o serviço `sonarqube-init` (container `alpine` que roda uma vez após o healthcheck do SonarQube) para automatizar essas duas etapas. A solução foi aceita e gerou o commit `feat: zero-config para clone fresco`. Ajuste manual: o `start_period: 120s` no healthcheck foi calibrado empiricamente observando o tempo de boot real do SonarQube.
+
 ### O que não foi feito por IA
 
 - Modelagem do domínio (classes `Jogador`, `Pokemon`, `Troca`, padrões Chain of Responsibility, Decorator e Factory)
 - Lógica de negócio das validações e troca de posse dos Pokémon
 - Estrutura dos testes e casos de teste (`conftest.py`, fixtures, monkeypatch)
-- Decisão de arquitetura (MQTT fire-and-forget, persistência em JSON, separação `gerencia_propostas.py`)
+- Decisão de arquitetura (MQTT fire-and-forget, persistência em MongoDB, separação `gerencia_propostas.py`)
 
 ### Dinâmica de uso
 
