@@ -1,12 +1,11 @@
 services:
 
-  # ── Container 1: API FastAPI
-  # build local para dev; após o pipeline, a imagem vem do Docker Hub
+ # ── Container 1: API FastAPI
   api:
     build:
       context: .
       dockerfile: Dockerfile.python
-    image: ${DOCKER_HUB_USER}/${IMAGE_NAME}:latest
+    #image: ${DOCKER_HUB_USER}/${IMAGE_NAME}:latest romovendo 
     container_name: pokemon-api
     ports:
       - "8000:8000"
@@ -14,8 +13,16 @@ services:
       - MONGO_URI=mongodb://${MONGO_USER:-devops_user}:${MONGO_PASSWORD:-devops_password}@mongodb:27017/
       - MONGO_DB=${MONGO_DB:-pokemon_trades}
     depends_on:
-      - mosquitto
-      - mongodb 
+      mosquitto:
+        condition: service_started
+      mongodb:
+        condition: service_healthy # <--- AGORA A API SÓ SOBE SE O BANCO ESTIVER SAUDÁVEL
+    healthcheck:
+      # Usa o próprio Python para testar a rota que acabamos de criar (sem precisar instalar o cURL)
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
+      interval: 15s
+      timeout: 5s
+      retries: 3
     restart: unless-stopped
 
   # ── Container 2: Broker MQTT
@@ -85,9 +92,8 @@ services:
 
   # ── Container 5: Jenkins CI/CD
   jenkins:
-    build:
-      context: .
-      dockerfile: Dockerfile.jenkins
+    # REMOVIDO o bloco 'build:' daqui
+    image: ${DOCKER_HUB_USER}/jenkins-devops:latest # <--- Puxando do Hub
     container_name: jenkins
     ports:
       - "8080:8080"
@@ -120,6 +126,13 @@ services:
       - MONGO_INITDB_DATABASE=${MONGO_DB:-pokemon_trades}
     volumes:
       - mongodb_data:/data/db
+    healthcheck:
+      # Dá um ping interno no Mongo para ver se ele já está aceitando conexões
+      test: ["CMD-SHELL", "mongosh -u ${MONGO_USER:-devops_user} -p ${MONGO_PASSWORD:-devops_password} --quiet --eval 'db.adminCommand(\"ping\")' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     restart: unless-stopped
 
 volumes:
