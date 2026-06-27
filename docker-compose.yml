@@ -5,7 +5,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.python
-    image: ${DOCKER_HUB_USER}/${IMAGE_NAME}:latest
+    #image: ${DOCKER_HUB_USER}/${IMAGE_NAME}:latest romovendo 
     container_name: pokemon-api
     ports:
       - "8000:8000"
@@ -92,9 +92,8 @@ services:
 
   # ── Container 5: Jenkins CI/CD
   jenkins:
-    build:
-      context: .
-      dockerfile: Dockerfile.jenkins
+    # REMOVIDO o bloco 'build:' daqui
+    image: ${DOCKER_HUB_USER}/jenkins-devops:latest # <--- Puxando do Hub
     container_name: jenkins
     ports:
       - "8080:8080"
