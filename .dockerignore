@@ -1,0 +1,11 @@
+.git
+.env
+__pycache__/
+*.pyc
+.pytest_cache/
+jenkins_home/
+postgres_data/
+sonarqube_data/
+sonarqube_extensions/
+sonarqube_logs/
+mongodb_data/
