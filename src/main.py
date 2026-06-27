@@ -105,3 +105,11 @@ def topicos_mqtt():
         "proposta": "troca/{jogador_destino_id}",
         "aceitacao": "troca/sucesso"
     }
+
+    @app.get("/health", tags=["Monitoramento"])
+    def health_check():
+        """
+        Endpoint de monitoramento para o Docker e o Jenkins verificarem 
+        se a aplicação está viva e pronta para receber requisições.
+        """
+        return {"status": "UP", "servico": "pokemon-api-jimen"}
